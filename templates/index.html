@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube MP3 추출기</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 YouTube MP3 추출기</h1>
+            <h2>🤩 100% Virus Free</h2>
+            <p>YouTube 비디오에서 고품질 MP3 오디오를 추출하세요</p>
+            <p>악성코드가 범람하는 웹사이트에서 오디오를 추출하는 게 너무 불안해서 직접 개발했습니다.</p>
+            
+            <p>개발자: 강래우 at Hanyang University ERICA(raewoo0908@gmail.com)</p>
+        </header>
+
+        <main>
+            <div class="extraction-form">
+                <div class="input-group">
+                    <label for="youtube-url">YouTube URL:</label>
+                    <input 
+                        type="url" 
+                        id="youtube-url" 
+                        placeholder="https://www.youtube.com/watch?v=..." 
+                        required
+                    >
+                </div>
+                
+                <button id="extract-btn" onclick="startExtraction()">
+                    🎵 MP3 추출 시작
+                </button>
+            </div>
+
+            <div id="progress-section" class="progress-section" style="display: none;">
+                <h3>추출 진행 상황</h3>
+                <div class="progress-bar">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+                <p id="progress-text">0%</p>
+                <div id="status-message" class="status-message"></div>
+            </div>
+
+            <div id="result-section" class="result-section" style="display: none;">
+                <h3>✅ 추출 완료!</h3>
+                <div class="result-info">
+                    <p id="video-title"></p>
+                    <button id="download-btn" onclick="downloadFile()" class="download-btn">
+                        📥 MP3 다운로드
+                    </button>
+                </div>
+            </div>
+
+            <div id="error-section" class="error-section" style="display: none;">
+                <h3>❌ 오류 발생</h3>
+                <p id="error-message"></p>
+                <button onclick="resetForm()" class="reset-btn">다시 시도</button>
+            </div>
+        </main>
+
+        <footer>
+            <p>HEMA 멤버들을 위한 YouTube MP3 추출 서비스</p>
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
