@@ -23,7 +23,8 @@ EXPOSE 5000
 
 # 환경 변수 설정
 ENV FLASK_APP=app.py
-ENV FLASK_ENV=production
+ENV FLASK_DEBUG=0
+ENV PYTHONUNBUFFERED=1
 
 # 애플리케이션 실행
 CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "app:app"]
