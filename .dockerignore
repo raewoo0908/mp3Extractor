@@ -25,3 +25,36 @@ downloads/
 venv/
 ENV/
 env/
+
+# 개발/테스트 파일들 제외
+*test*.py
+test_*
+tests/
+*_test.py
+cookie-*.py
+check-*.sh
+prepare-*.sh
+sync-*.sh
+quick-*.sh
+
+# 문서 및 설정 파일들 제외 
+README.md
+*.md
+.github/
+.gitignore
+.dockerignore
+
+# 임시 파일들 제외
+temp/
+tmp/
+ 
+# IDE 설정 파일들
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Virtual environment
+venv/
+.venv/
+__pycache__/
