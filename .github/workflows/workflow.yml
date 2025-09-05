@@ -76,10 +76,10 @@ jobs:
       - name: Test Docker image
         run: |
           # 이미지 기본 정보 확인
-          docker images
           echo "[INFO] Available images:"
-          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(REPOSITORY|mp3-extractor)" || echo "No mp3-extractor images found yet"
-          
+          docker images
+          docker images | grep ${{ env.IMAGE_NAME }}
+
           # 컨테이너 실행 테스트 - 빌드된 이미지 사용
           IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
           echo "[INFO] Testing image: $IMAGE_TAG"
