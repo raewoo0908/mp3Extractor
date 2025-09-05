@@ -72,35 +72,77 @@ jobs:
           cache-from: type=gha  # GitHub Actions 캐시 사용
           cache-to: type=gha,mode=max  # 빌드 캐시를 GitHub Actions에 저장
       
-      # 6. 이미지 테스트 (빌드 성공 후 항상 실행)
-      - name: Test Docker image
+      # 6a. PR용 이미지 테스트 (테스트 후 정리)
+      - name: Test Docker image (PR)
+        if: github.event_name == 'pull_request'
         run: |
-          # 이미지 기본 정보 확인
+          echo "[INFO] PR Testing - Available images:"
           docker images
-          echo "[INFO] Available images:"
-          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(REPOSITORY|mp3-extractor)" || echo "No mp3-extractor images found yet"
           
-          # 컨테이너 실행 테스트 - 빌드된 이미지 사용
+          # 방금 빌드한 이미지 검증
           IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
-          echo "[INFO] Testing image: $IMAGE_TAG"
+          echo "[INFO] Testing PR image: $IMAGE_TAG"
+          
+          # 특정 태그의 이미지가 존재하는지 확인
+          if docker image inspect $IMAGE_TAG >/dev/null 2>&1; then
+            echo "[OK] PR image $IMAGE_TAG exists and is ready for testing"
+          else
+            echo "[ERROR] PR image $IMAGE_TAG not found!"
+            exit 1
+          fi
+          
+          # 컨테이너 실행 및 테스트
           docker run -d --name test-app -p 5001:5001 $IMAGE_TAG
-          
-          # 컨테이너 시작 대기
           sleep 30
+          curl -f http://localhost:5001/ || (echo "[ERROR] PR health check failed" && exit 1)
+          docker logs --tail 100 test-app
+
+          echo "[OK] PR image test completed successfully!"
+      
+      # 6b. Push용 이미지 테스트 (테스트 후 이미지 보존)
+      - name: Test Docker image (Push)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "[INFO] Push Testing - Available images:"
+          docker images
           
-          # 헬스체크 - 홈페이지 접근 테스트
-          curl -f http://localhost:5001/ || (echo "[FAIL] Health check failed" && exit 1)
+          # 방금 빌드한 이미지 검증
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "[INFO] Testing Push image: $IMAGE_TAG"
           
-          # 컨테이너 로그 확인
-          docker logs test-app
+          # 특정 태그의 이미지가 존재하는지 확인
+          if docker image inspect $IMAGE_TAG >/dev/null 2>&1; then
+            echo "[OK] Push image $IMAGE_TAG exists and is ready for testing"
+          else
+            echo "[ERROR] Push image $IMAGE_TAG not found!"
+            exit 1
+          fi
           
-          # 정리
+          # 컨테이너 실행 및 테스트
+          docker run -d --name test-app -p 5001:5001 $IMAGE_TAG
+          sleep 30
+          curl -f http://localhost:5001/ || (echo "[ERROR] Push health check failed" && exit 1)
+          docker logs --tail 100 test-app
+          
+          # 정리 (컨테이너만, 이미지는 푸시를 위해 보존)
+          docker stop test-app
+          docker rm test-app
+          echo "[OK] Push image test completed successfully!"
+      
+      # 7a. PR 후 이미지 정리
+      - name: Clean up PR containers and images 
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "[INFO] Cleaning up PR test containers and images..."
+          
           docker stop test-app
           docker rm test-app
           
-          echo "[OK] Image test completed successfully"
-      
-      # 7. 테스트 성공 후 이미지 푸시 (main 브랜치에서만)
+          docker image prune -f
+          echo "[INFO] PR cleanup completed"
+
+
+      # 7b. 테스트 성공 후 이미지 푸시 (main 브랜치에서만)
       - name: Push Docker image to registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: docker/build-push-action@v5
@@ -114,12 +156,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       
-      # 8. 푸시 완료 메시지
-      - name: Push completed
+      # 8. 푸시 완료 메시지 및 이미지 정리
+      - name: Push completed and cleanup
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "[OK] Image successfully pushed to Docker Hub after passing tests"
-      
-      # 9. PR용 빌드 완료 메시지
-      - name: PR Build Complete
-        if: github.event_name == 'pull_request'
-        run: echo "[OK] Docker image build test completed successfully for PR"
+        run: |
+          echo "[OK] Image successfully pushed to Docker Hub after passing tests"
+          echo "[INFO] Cleaning up local images after successful push..."
+          docker image prune -f
+          echo "[INFO] Final cleanup completed"
