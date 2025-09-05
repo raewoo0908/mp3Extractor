@@ -57,15 +57,16 @@ jobs:
             org.opencontainers.image.description=YouTube MP3 Extractor Application
             org.opencontainers.image.vendor=${{ env.DOCKERHUB_USERNAME }}
       
-      # 5. Docker 이미지 빌드 (PR시: 테스트용, Push시: 빌드+푸시)
-      - name: Build and conditionally push Docker image
+      # 5. Docker 이미지 빌드 
+      - name: Build Docker image
         id: build
         uses: docker/build-push-action@v5
         with:
           context: .  # 빌드 컨텍스트는 현재 디렉토리
           file: ./Dockerfile  # 사용할 Dockerfile 경로
           platforms: ${{ env.PLATFORMS }}  # 빌드할 플랫폼들
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}  # main 브랜치 push시에만 푸시
+          push: false  # 빌드만 하고 푸시하지 않음
+          load: true   # 로컬에서 테스트할 수 있도록 이미지 로드
           tags: ${{ steps.meta.outputs.tags }}  # 추출된 태그들 사용
           labels: ${{ steps.meta.outputs.labels }}  # 추출된 라벨들 사용
           cache-from: type=gha  # GitHub Actions 캐시 사용
@@ -75,13 +76,17 @@ jobs:
       - name: Test Docker image
         run: |
           # 이미지 기본 정보 확인
-          docker images | grep mp3-extractor
+          docker images
+          echo "[INFO] Available images:"
+          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(REPOSITORY|mp3-extractor)" || echo "No mp3-extractor images found yet"
           
-          # 컨테이너 실행 테스트
-          docker run -d --name test-app -p 5001:5001 ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          # 컨테이너 실행 테스트 - 빌드된 이미지 사용
+          IMAGE_TAG=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          echo "[INFO] Testing image: $IMAGE_TAG"
+          docker run -d --name test-app -p 5001:5001 $IMAGE_TAG
           
           # 컨테이너 시작 대기
-          sleep 15
+          sleep 30
           
           # 헬스체크 - 홈페이지 접근 테스트
           curl -f http://localhost:5001/ || (echo "[FAIL] Health check failed" && exit 1)
@@ -95,12 +100,26 @@ jobs:
           
           echo "[OK] Image test completed successfully"
       
-      # 7. 빌드 결과 요약 출력 (푸시된 경우에만)
-      - name: Image digest
+      # 7. 테스트 성공 후 이미지 푸시 (main 브랜치에서만)
+      - name: Push Docker image to registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "[OK] Image pushed with digest - ${{ steps.build.outputs.digest }}"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ env.PLATFORMS }}
+          push: true  # 이제 푸시 실행
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       
-      # 8. PR용 빌드 완료 메시지
+      # 8. 푸시 완료 메시지
+      - name: Push completed
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "[OK] Image successfully pushed to Docker Hub after passing tests"
+      
+      # 9. PR용 빌드 완료 메시지
       - name: PR Build Complete
         if: github.event_name == 'pull_request'
         run: echo "[OK] Docker image build test completed successfully for PR"
