@@ -1,0 +1,106 @@
+name: Docker Build and Push
+
+# 워크플로우가 실행될 조건 정의
+on:
+  push:
+    branches:
+      - main  # main 브랜치에 push될 때 실행
+  pull_request:
+    branches:
+      - main  # main 브랜치로 PR이 생성될 때 실행
+
+# 환경 변수 정의
+env:
+  DOCKERHUB_USERNAME: raelukang
+  IMAGE_NAME: mp3-extractor
+  PLATFORMS: linux/amd64
+
+jobs:
+  # PR 시: 빌드 및 테스트만 수행
+  # Push 시: 빌드, 테스트 후 이미지 푸시
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    
+    # 작업 실행 단계들
+    steps:
+      # 1. 소스 코드 체크아웃
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 전체 git 히스토리를 가져옴 (태그 정보 등을 위해)
+      
+      # 2. Docker Buildx 설정 (고급 빌드 기능 및 캐싱을 위해)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      # 3. Docker Hub에 로그인 (main 브랜치 push시에만)
+      - name: Login to Docker Hub
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
+      # 4. 메타데이터 추출 (태그, 라벨 등)
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value={{date 'YYYYMMDD'}}
+          labels: |
+            org.opencontainers.image.title=${{ env.IMAGE_NAME }}
+            org.opencontainers.image.description=YouTube MP3 Extractor Application
+            org.opencontainers.image.vendor=${{ env.DOCKERHUB_USERNAME }}
+      
+      # 5. Docker 이미지 빌드 (PR시: 테스트용, Push시: 빌드+푸시)
+      - name: Build and conditionally push Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .  # 빌드 컨텍스트는 현재 디렉토리
+          file: ./Dockerfile  # 사용할 Dockerfile 경로
+          platforms: ${{ env.PLATFORMS }}  # 빌드할 플랫폼들
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}  # main 브랜치 push시에만 푸시
+          tags: ${{ steps.meta.outputs.tags }}  # 추출된 태그들 사용
+          labels: ${{ steps.meta.outputs.labels }}  # 추출된 라벨들 사용
+          cache-from: type=gha  # GitHub Actions 캐시 사용
+          cache-to: type=gha,mode=max  # 빌드 캐시를 GitHub Actions에 저장
+      
+      # 6. 이미지 테스트 (빌드 성공 후 항상 실행)
+      - name: Test Docker image
+        run: |
+          # 이미지 기본 정보 확인
+          docker images | grep mp3-extractor
+          
+          # 컨테이너 실행 테스트
+          docker run -d --name test-app -p 5001:5001 ${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          
+          # 컨테이너 시작 대기
+          sleep 15
+          
+          # 헬스체크 - 홈페이지 접근 테스트
+          curl -f http://localhost:5001/ || (echo "[FAIL] Health check failed" && exit 1)
+          
+          # 컨테이너 로그 확인
+          docker logs test-app
+          
+          # 정리
+          docker stop test-app
+          docker rm test-app
+          
+          echo "[OK] Image test completed successfully"
+      
+      # 7. 빌드 결과 요약 출력 (푸시된 경우에만)
+      - name: Image digest
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "[OK] Image pushed with digest - ${{ steps.build.outputs.digest }}"
+      
+      # 8. PR용 빌드 완료 메시지
+      - name: PR Build Complete
+        if: github.event_name == 'pull_request'
+        run: echo "[OK] Docker image build test completed successfully for PR"
